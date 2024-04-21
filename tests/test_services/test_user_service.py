@@ -2,6 +2,7 @@ import pytest
 from app.dependencies import get_settings
 from app.services.user_service import UserService
 from app.models.user_model import User
+from unittest.mock import AsyncMock
 
 pytestmark = pytest.mark.asyncio
 
@@ -158,3 +159,11 @@ async def test_unlock_user_account(db_session, locked_user):
     await UserService.unlock_user_account(db_session, locked_user.id)
     is_locked = await UserService.is_account_locked(db_session, locked_user.username)
     assert not is_locked, "The account should be unlocked after calling unlock_user_account."
+
+async def test_register_user_duplicate_username(mocker):
+    mock_session = AsyncMock()
+    mocker.patch('app.services.user_service.UserService.get_by_username', return_value=AsyncMock(return_value=User(username="existing_user")))
+    mocker.patch('app.services.user_service.UserService.get_by_email', return_value=AsyncMock(return_value=None))
+
+    response = await UserService.register_user(mock_session, {"username": "existing_user", "password": "pass", "email": "test@example.com"})
+    assert response is None
