@@ -179,12 +179,12 @@ async def list_users(request: Request, skip: int = 0, limit: int = 10, db: Async
     return UserListResponse(items=user_responses, pagination=pagination)
 
 
-@router.post("/register/", response_model=UserResponse)
+@router.post("/register/", response_model=UserResponse, status_code=status.HTTP_201_CREATED)
 async def register(user_data: UserCreate, session: AsyncSession = Depends(get_async_db)):
     user = await UserService.register_user(session, user_data.dict())
-    if user:
-        return user
-    raise HTTPException(status_code=400, detail="Username already exists")
+    if not user:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Username or email already exists or failed to create the user")
+    return user
 
 @router.post("/login/")
 async def login(login_request: LoginRequest, session: AsyncSession = Depends(get_async_db)):
