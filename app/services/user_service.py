@@ -8,9 +8,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.user_model import User
 from app.schemas.user_schemas import UserCreate, UserUpdate
 from app.utils.security import hash_password, verify_password
+from settings.config import get_settings
 from uuid import UUID
 import logging
 
+# Retrieve and configure settings from your settings module
 settings = get_settings()
 logger = logging.getLogger(__name__)
 
@@ -72,7 +74,6 @@ class UserService:
         result = await cls._execute_query(session, query)
         return result.scalars().all() if result else []
 
-
     @classmethod
     async def login_user(cls, session: AsyncSession, username: str, password: str) -> Optional[User]:
         user = await cls.get_by_username(session, username)
@@ -97,7 +98,6 @@ class UserService:
     async def is_account_locked(cls, session: AsyncSession, username: str) -> bool:
         user = await cls.get_by_username(session, username)
         return user.is_locked if user else False
-
 
     @classmethod
     async def reset_password(cls, session: AsyncSession, user_id: UUID, new_password: str) -> bool:
