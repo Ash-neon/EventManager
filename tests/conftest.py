@@ -32,6 +32,7 @@ from app.database import Base, get_async_db, initialize_async_db
 from app.models.user_model import User, UserRole
 from app.dependencies import get_db, get_settings
 from app.utils.security import hash_password
+from settings.config import get_settings, Settings
 
 fake = Faker()
 
@@ -178,3 +179,7 @@ async def manager_user(db_session: AsyncSession):
     db_session.add(user)
     await db_session.commit()
     return user
+
+@pytest.fixture(scope="session", autouse=True)
+def setup_test_environment():
+    get_settings()  # This call initializes settings with tes

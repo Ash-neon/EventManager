@@ -8,9 +8,11 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models.user_model import User
 from app.schemas.user_schemas import UserCreate, UserUpdate
 from app.utils.security import hash_password, verify_password
+from settings.config import get_settings
 from uuid import UUID
 import logging
 
+# Retrieve and configure settings from your settings module
 settings = get_settings()
 logger = logging.getLogger(__name__)
 
@@ -72,32 +74,36 @@ class UserService:
         result = await cls._execute_query(session, query)
         return result.scalars().all() if result else []
 
-
     @classmethod
     async def login_user(cls, session: AsyncSession, username: str, password: str) -> Optional[User]:
+        logger.debug(f"Attempting to log in user: {username}")
         user = await cls.get_by_username(session, username)
         if user:
-            if user.is_locked:
-                return None
+            logger.debug(f"User found: {user.username}, verifying password...")
             if verify_password(password, user.hashed_password):
+                logger.debug("Password verified successfully")
+                # Update login time and reset attempts
                 user.failed_login_attempts = 0
                 user.last_login_at = datetime.now(timezone.utc)
                 session.add(user)
                 await session.commit()
                 return user
             else:
+                logger.debug("Password verification failed")
                 user.failed_login_attempts += 1
                 if user.failed_login_attempts >= settings.max_login_attempts:
                     user.is_locked = True
+                    logger.debug("User account locked due to failed attempts")
                 session.add(user)
                 await session.commit()
+        else:
+            logger.debug("User not found")
         return None
 
     @classmethod
     async def is_account_locked(cls, session: AsyncSession, username: str) -> bool:
         user = await cls.get_by_username(session, username)
         return user.is_locked if user else False
-
 
     @classmethod
     async def reset_password(cls, session: AsyncSession, user_id: UUID, new_password: str) -> bool:

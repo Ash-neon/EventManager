@@ -2,8 +2,21 @@ import pytest
 from app.dependencies import get_settings
 from app.services.user_service import UserService
 from app.models.user_model import User
+from unittest.mock import AsyncMock
+from uuid import uuid4
+from unittest.mock import AsyncMock, patch
+from sqlalchemy.ext.asyncio import AsyncSession
 
 pytestmark = pytest.mark.asyncio
+
+user_id = uuid4()
+user_data = {
+        "username": "valid_user",
+        "email": "valid_user@example.com",
+        "password": "ValidPassword123!",
+    }
+
+hashed_password = "$2b$12$KxsqLJFPF4X9FAClUx3Woe1O5Q7qW5p7L8t8BcUl6UupC/ttQFACS"  # Example bcrypt hash
 
 # Test for creating a user with valid data
 async def test_create_user_with_valid_data(db_session):
@@ -158,3 +171,42 @@ async def test_unlock_user_account(db_session, locked_user):
     await UserService.unlock_user_account(db_session, locked_user.id)
     is_locked = await UserService.is_account_locked(db_session, locked_user.username)
     assert not is_locked, "The account should be unlocked after calling unlock_user_account."
+
+async def test_register_user_duplicate_username(mocker):
+    mock_session = AsyncMock()
+    mocker.patch('app.services.user_service.UserService.get_by_username', return_value=AsyncMock(return_value=User(username="existing_user")))
+    mocker.patch('app.services.user_service.UserService.get_by_email', return_value=AsyncMock(return_value=None))
+
+    response = await UserService.register_user(mock_session, {"username": "existing_user", "password": "pass", "email": "test@example.com"})
+    assert response is None
+
+@pytest.mark.asyncio
+async def test_login_user():
+    # Mock user retrieval and password verification
+    user = User(id=user_id, username=user_data['username'], hashed_password=hashed_password)
+    with patch("app.services.user_service.UserService.get_by_username", AsyncMock(return_value=user)):
+        with patch("app.utils.security.verify_password", return_value=True):
+            with patch.object(AsyncSession, "commit", AsyncMock()):
+                logged_in_user = await UserService.login_user(AsyncMock(), user.username, "safePassword123")
+                assert logged_in_user is not None
+                assert logged_in_user.username == user.username
+
+@pytest.mark.asyncio
+async def test_failed_login_attempts():
+    # Test that failed login attempts are counted correctly
+    user = User(id=user_id, username=user_data['username'], hashed_password=hashed_password, failed_login_attempts=0)
+    with patch("app.services.user_service.UserService.get_by_username", AsyncMock(return_value=user)):
+        with patch("app.utils.security.verify_password", return_value=False):
+            with patch.object(AsyncSession, "commit", AsyncMock()):
+                await UserService.login_user(AsyncMock(), user.username, "wrongPassword")
+                assert user.failed_login_attempts == 1
+
+@pytest.mark.asyncio
+async def test_account_lock():
+    # Ensure that the account is locked after maximum failed attempts
+    user = User(id=user_id, username=user_data['username'], hashed_password=hashed_password, failed_login_attempts=4)
+    with patch("app.services.user_service.UserService.get_by_username", AsyncMock(return_value=user)):
+        with patch("app.utils.security.verify_password", return_value=False):
+            with patch.object(AsyncSession, "commit", AsyncMock()):
+                await UserService.login_user(AsyncMock(), user.username, "wrongPassword")
+                assert user.is_locked
